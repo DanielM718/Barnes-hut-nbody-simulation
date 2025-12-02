@@ -11,7 +11,8 @@ enum state_{
 
 enum opp_{
     forceV = 0,
-    Pstep = 1
+    Pstep = 1,
+    anim = 2
 };
 
 
@@ -70,6 +71,10 @@ class node: public space{
         void simulate(node* root);
         void traversal(node* root, int opp);
         void rebuild(node*& root);
+        void animate(node* root);
+
+        void printCoords();
+        void trail();
 
         int SetID(double m, vector r, vector v);
 };

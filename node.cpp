@@ -468,6 +468,19 @@ void node::VelocityHalfStep(){
     leafNodes[id]->velocity += leafNodes[id]->alpha*dt;
 }
 
+void node::printCoords(){
+    // printf("%lf, %lf, %lf\n", pos.x, pos.y, pos.z);
+    // printf("Planet Count:%d PlanetID: %d\n", planetCount, planetID);
+    vector p = leafNodes[this->id]->position;
+    printf("c3 %.17lf %.17lf %.17lf %17lf\n", p.x, p.y, p.z, 0.1);
+}
+
+void node::trail(){
+    vector p = leafNodes[this->id]->position;
+    printf("ct3 %d %17lf %17lf %17lf %17lf\n", this->id, p.x, p.y, p.z, 0.001);
+}
+
+
 void node::traversal(node* root, int opp){
     // start at root so first iteration root=curr
     // must be a leaf and implicitly also have 1 object
@@ -482,6 +495,10 @@ void node::traversal(node* root, int opp){
             break;
         case Pstep:
             PositionHalfStep();
+            break;
+        case anim:
+            printCoords();
+            trail();
             break;
         default:
             printf("bad opp");
@@ -528,6 +545,10 @@ void node::simulate(node* root){
     // second half step
     root->traversal(root, Pstep);
 
+}
+
+void node::animate(node* root){
+    root->traversal(root, anim);
 }
 
 void node::rebuild(node*& root){

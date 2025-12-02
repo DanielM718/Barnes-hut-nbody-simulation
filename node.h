@@ -28,7 +28,6 @@ class node: public space{
         node* six;
         node* seven;
         node* eight;
-        node* prev;
 
         static const double G;
         static const double dt;
@@ -45,7 +44,7 @@ class node: public space{
         node(double width);
         node(double width, int objects, double mass, vector com, vector center);
         node(double width, int objects, double mass, vector com, vector center, int id);
-
+        ~node();
 
         void SetOne(node* one);
         void SetTwo(node* two);
@@ -55,10 +54,12 @@ class node: public space{
         void SetSix(node* six);
         void SetSeven(node* seven);
         void SetEight(node* eight);
-        void SetPrev(node* prev);
 
         void AddObject(double mass, vector com, vector v);
+        void AddExisting(int id);
+
         void InsertChild(double m, vector r, vector v, int id);
+        void InsertExisting(double m, vector r, vector v, int id);
 
         void computeForce(const node* n, const vector& com, double theta, vector& alpha);
         void PositionHalfStep();
@@ -68,6 +69,7 @@ class node: public space{
 
         void simulate(node* root);
         void traversal(node* root, int opp);
+        void rebuild(node*& root);
 
         int SetID(double m, vector r, vector v);
 };

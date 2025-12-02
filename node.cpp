@@ -12,10 +12,10 @@ node::node(double width) :
     six(nullptr),
     seven(nullptr),
     eight(nullptr),
-    prev(nullptr),
     state(leaf),
-    id(0)
-    {}
+    id(-1)
+    {
+}
 
 node::node(double width, int objects, double mass, vector com, vector center):
     space(width, objects, mass, com, center),
@@ -27,10 +27,10 @@ node::node(double width, int objects, double mass, vector com, vector center):
     six(nullptr),
     seven(nullptr),
     eight(nullptr),
-    prev(nullptr),
     state(leaf),
-    id(0)
-    {}
+    id(-1)
+    {
+}
 
 node::node(double width, int objects, double mass, vector com, vector center, int id):
     space(width, objects, mass, com, center),
@@ -42,10 +42,21 @@ node::node(double width, int objects, double mass, vector com, vector center, in
     six(nullptr),
     seven(nullptr),
     eight(nullptr),
-    prev(nullptr),
     state(leaf),
     id(id)
-    {}
+    {
+}
+
+node::~node(){
+    delete one;
+    delete two;
+    delete three;
+    delete four;
+    delete five;
+    delete six;
+    delete seven;
+    delete eight;
+}
 
 void node::SetOne(node* one){this->one = one;}
 void node::SetTwo(node* two){this->two = two;}
@@ -55,11 +66,10 @@ void node::SetFive(node* five){this->five = five;}
 void node::SetSix(node* six){this->six = six;};
 void node::SetSeven(node* seven){this->seven = seven;}
 void node::SetEight(node* eight){this->eight = eight;}
-void node::SetPrev(node* prev){this->prev = prev;}
 
 const double node::G = 4*(M_PI*M_PI);
 const double node::dt = 0.0005;
-const double node::theta = 0;
+const double node::theta = 0.5;
 Body* node::leafNodes[100000] = {nullptr};
 int node::memberCount = 0;
 
@@ -84,12 +94,6 @@ void node::AddObject(double mass, vector com, vector v){
     if((state == leaf) && (objects == 1)){
         // if it has more than one object its an internal node now
         state = internal;
-
-        // keep track of old values since I then new to create a new child node
-        // containing the old info of the original leaf node
-        // double m_old = this->mass;
-        // vector r_old = this->com;
-        // vector v_old = this->velocity;
 
         // reset this internal node to a blank slate
         SetMass(0.0);
@@ -123,6 +127,62 @@ void node::AddObject(double mass, vector com, vector v){
     SetObject(totalObjects);
 }
 
+void node::AddExisting(int id){
+    Body* b = leafNodes[id];
+    vector com = b->position;
+    vector v = b->velocity;
+    double mass = b->mass;
+
+    if((state == leaf) && (objects == 0)){
+        SetCom(com);
+        SetMass(mass);
+        SetObject(1);
+        this->id = id;
+        return;
+    }
+
+    if((state == leaf) && (objects == 1)){
+        // if it has more than one object its an internal node now
+        state = internal;
+
+        double m_old = this->mass;
+        vector com_old = this->com;
+        vector velocity = leafNodes[this->id]->velocity;
+
+        // reset this internal node to a blank slate
+        SetMass(0.0);
+        SetCom(vector(0, 0, 0));
+        SetObject(0);
+
+
+        InsertExisting(m_old, com_old, velocity, this->id);
+        this->id = -1;
+    }
+    InsertExisting(mass, com, v, id);
+
+    // I want to avoid updating these values recursively because theyre very annoying to debug and keep track of
+    // this way is more straight forward.
+    double totalMass = 0.0;
+    vector weightedSum(0, 0, 0);
+    int totalObjects = 0;
+
+    // after inserting the new node I can add up all the masses again.
+    node* kids[8] = { one, two, three, four, five, six, seven, eight };
+
+    for (int i = 0; i < 8; i++){
+        node* c = kids[i];
+        if((c != nullptr) && (c->mass > 0.0)){
+            totalMass += c->mass;
+            weightedSum += c->com * c->mass;
+            totalObjects += c->objects;
+        }
+    }
+    SetCom(weightedSum / totalMass);
+    SetMass(totalMass);
+    SetObject(totalObjects);
+    
+}
+
 int node::SetID(double m, vector r, vector v){
     if(id == -1){
         int tmp = memberCount;
@@ -130,6 +190,7 @@ int node::SetID(double m, vector r, vector v){
         memberCount++;
         return tmp;
     }
+    return id;
 }
 
 void node::InsertChild(double m, vector r, vector v, int id){
@@ -254,6 +315,104 @@ void node::InsertChild(double m, vector r, vector v, int id){
     }
 }
 
+void node::InsertExisting(double m, vector r, vector v, int id){
+    double x = this->center.x;
+    double y = this->center.y;
+    double z = this->center.z;
+
+    double cx, cy, cz;
+
+
+    // child width and subdivison offset
+    double childWidth = width / 2.0;
+    double offset = childWidth / 2.0;
+
+
+    
+    // this handles which branch the new object will be in the oct tree
+    if(r.x >= x && r.y >= y && r.z >= z){
+        // top, up, right of cube
+        // if the branch is empty I can just append it to the end
+        if(one == nullptr){
+            cx = x + offset;
+            cy = y + offset;
+            cz = z + offset;
+            SetOne(new node(childWidth, 1, m, r, vector(cx, cy, cz), id));
+        } // but if there is another node, then that means it must traverse to another node recursively
+        else{one->AddExisting(id);}
+    }
+    else if (r.x < x && r.y >= y && r.z >= z){
+        // top, up, left of cube
+        if(two == nullptr){
+            cx = x - offset;
+            cy = y + offset;
+            cz = z + offset;
+            SetTwo(new node(childWidth, 1, m, r, vector(cx, cy, cz), id));
+        }
+        else{two->AddExisting(id);}
+    }
+    else if(r.x >= x && r.y < y && r.z >= z){
+        // top, down, right of cube
+        if(three == nullptr){
+            cx = x + offset;
+            cy = y - offset;
+            cz = z + offset;
+            SetThree(new node(childWidth, 1, m, r, vector(cx, cy, cz), id));
+        }
+        else{three->AddExisting(id);}
+    }
+    else if(r.x < x && r.y < y && r.z >= z){
+        // top, down, left of cube
+        if(four == nullptr){
+            cx = x - offset;
+            cy = y - offset;
+            cz = z + offset;
+            SetFour(new node(childWidth, 1, m, r, vector(cx, cy, cz), id));
+        }
+        else{four->AddExisting(id);}
+    }
+    else if(r.x >= x && r.y >= y && r.z < z){
+        // bottom, up, right of cube
+        if(five == nullptr){
+            cx = x + offset;
+            cy = y + offset;
+            cz = z - offset;
+            SetFive(new node(childWidth, 1, m, r, vector(cx, cy, cz), id));
+        }
+        else{five->AddExisting(id);}
+    }
+    else if(r.x < x && r.y >= y && r.z < z){
+        // bottom, up, left of cube
+        if(six == nullptr){
+            cx = x - offset;
+            cy = y + offset;
+            cz = z - offset;
+            SetSix(new node(childWidth, 1, m, r, vector(cx, cy, cz), id));
+        }
+        else{six->AddExisting(id);}
+    }
+    else if(r.x >= x && r.y < y && r.z < z){
+        // bottom, down, right of cube
+        if(seven == nullptr){
+            cx = x + offset;
+            cy = y - offset;
+            cz = z - offset;
+            SetSeven(new node(childWidth, 1, m, r, vector(cx, cy, cz), id));
+        }
+        else{seven->AddExisting(id);}
+    }
+    else{
+        // bottom, down, left of cube
+        if(eight == nullptr){
+            cx = x - offset;
+            cy = y - offset;
+            cz = z - offset;
+            SetEight(new node(childWidth, 1, m, r, vector(cx, cy, cz), id));
+        }
+        else{eight->AddExisting(id);}
+    }    
+}
+
 // misleading as I compute the acceleration only but it saves me some time
 // there is one optimization i will implement later? 
 void node::computeForce(const node* n, const vector& com, const double theta, vector& alpha){
@@ -264,7 +423,7 @@ void node::computeForce(const node* n, const vector& com, const double theta, ve
     // the
 
     vector r = n->com - com; // compute the displacment between the two nodes center of mass
-    double d = magnitude(r);
+    double d = this->magnitude(r);
 
     if(n->objects == 1){ // if its one then it means we are at a leaf node
         // in that case we can just direct force and return
@@ -369,8 +528,25 @@ void node::simulate(node* root){
     // second half step
     root->traversal(root, Pstep);
 
-    // rebuilding the new tree
+}
 
+void node::rebuild(node*& root){
+    if(!root){return;} // if root pointer is a null pointer stop
+
+    double width = root->width;
+    vector center = root->center;
+
+    node* newRoot = new node(width);
+    newRoot->SetCenter(center);
+
+    for (int i = 0; i < memberCount; i++){
+        if(leafNodes[i]){
+            newRoot->AddExisting(i);
+        }
+    }
+
+    delete root;
+    root = newRoot;
 }
 
 

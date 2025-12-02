@@ -415,8 +415,9 @@ void node::InsertExisting(double m, vector r, vector v, int id){
 
 // misleading as I compute the acceleration only but it saves me some time
 // there is one optimization i will implement later? 
-void node::computeForce(const node* n, const vector& com, const double theta, vector& alpha){
+void node::computeForce(const node* n, const vector& com, const double theta, vector& alpha){ 
     if(!n) {return;} // since Ill be doing this recursively, it will stop
+    if(n->id == this->id){return;}
     // when it reaches a leaf node 
 
     double s = n->width; // in the Barnes Hut method the approximation is controlled by s/d
@@ -436,8 +437,8 @@ void node::computeForce(const node* n, const vector& com, const double theta, ve
     // if the angle is small enough then we can treat it as one object
     // how high theta is determines the accuracy of the simualtion
     // if its 0, then it will compute it as sum all
+    if(d == 0) {return;}
     if(s/d < theta){
-        if(d == 0) {return;}
         alpha += ((G*(n->mass)) / (d*d*d))*r;
         return;
     }

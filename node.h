@@ -33,6 +33,8 @@ class node: public space{
         static const double G;
         static const double dt;
         static const double theta;
+        static const double eps;
+        static const double cor;
 
 
         // COM will serve as a position in space class

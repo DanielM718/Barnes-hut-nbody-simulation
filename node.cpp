@@ -2,6 +2,8 @@
 #include <math.h>
 #include <stdio.h>
 
+// these are all the constructors
+// this one is only used to initialize the root node
 node::node(double width) : 
     space(width),
     one(nullptr),
@@ -17,6 +19,7 @@ node::node(double width) :
     {
 }
 
+// this is used where creating a new node with no id
 node::node(double width, int objects, double mass, vector com, vector center):
     space(width, objects, mass, com, center),
     one(nullptr),
@@ -32,6 +35,7 @@ node::node(double width, int objects, double mass, vector com, vector center):
     {
 }
 
+// used to create a new leaf node and assigns it a body
 node::node(double width, int objects, double mass, vector com, vector center, int id):
     space(width, objects, mass, com, center),
     one(nullptr),
@@ -47,6 +51,7 @@ node::node(double width, int objects, double mass, vector com, vector center, in
     {
 }
 
+// deconstructor used to free up heap memory
 node::~node(){
     delete one;
     delete two;
@@ -58,6 +63,7 @@ node::~node(){
     delete eight;
 }
 
+// helper functions to change member variables
 void node::SetOne(node* one){this->one = one;}
 void node::SetTwo(node* two){this->two = two;}
 void node::SetThree(node* three){this->three = three;}
@@ -67,23 +73,32 @@ void node::SetSix(node* six){this->six = six;};
 void node::SetSeven(node* seven){this->seven = seven;}
 void node::SetEight(node* eight){this->eight = eight;}
 
+// constants shared among all class members
 const double node::G = 4*(M_PI*M_PI);
 const double node::dt = 0.0005;
 const double node::theta = 0.5;
+const double node::eps = 1;
+const double node::cor = 0.32; // Coefficient of restitution
+
+// holds pointers to the bodies in the simulation
+// arbitrary array cap will work on dynamic array
 Body* node::leafNodes[100000] = {nullptr};
 int node::memberCount = 0;
 
 
 // for the Barnes Hut method I am going to construct a tree
-// note dynamically changing the tree as the objects move in space is a lot of work
-// Maybe 
+// note dynamically changing the tree as the objects move in space is a lot of work so I reconstruct the tree after each iteration
+// this has a lot of overhead so this is only really useful for large n body simulations
 void node::AddObject(double mass, vector com, vector v){
+    // when a root node it initialized it has no body or properties
     if((state == leaf) && (objects == 0)){
         // if its empty this will be the first body
+        // a new body is generated
         this->id = memberCount;
         leafNodes[id] = new Body(mass, com, v);
         memberCount++;
 
+        // node properties are set
         SetObject(1);
         SetMass(mass);
         SetCom(com);
@@ -91,8 +106,11 @@ void node::AddObject(double mass, vector com, vector v){
         return; // nothing else needs to be done
     }
 
+    // if a node has exactly one object and is a node
+    // then we need to turn it into an internal node
+    // and add the new node
     if((state == leaf) && (objects == 1)){
-        // if it has more than one object its an internal node now
+        // change state
         state = internal;
 
         // reset this internal node to a blank slate
@@ -100,9 +118,14 @@ void node::AddObject(double mass, vector com, vector v){
         SetCom(vector(0, 0, 0));
         SetObject(0);
 
+        // since its an internal node it will no longer be assigned the body
+        // so we set the ID to -1, and pass the ID to the body it did handle
+        // to the new child that will be created
         InsertChild(leafNodes[id]->mass, leafNodes[id]->position, leafNodes[id]->velocity, id);
         id = -1;
     }
+    // in the case where a node goes from leaf to node
+    // it will generate two new children instead of one
     InsertChild(mass, com, v, id);
 
     // I want to avoid updating these values recursively because theyre very annoying to debug and keep track of
@@ -127,6 +150,9 @@ void node::AddObject(double mass, vector com, vector v){
     SetObject(totalObjects);
 }
 
+// after the initial initialization no new bodies are generated
+// this is nearly identical to Add Object but redacts the ID and body
+// generation
 void node::AddExisting(int id){
     Body* b = leafNodes[id];
     vector com = b->position;
@@ -160,8 +186,7 @@ void node::AddExisting(int id){
     }
     InsertExisting(mass, com, v, id);
 
-    // I want to avoid updating these values recursively because theyre very annoying to debug and keep track of
-    // this way is more straight forward.
+
     double totalMass = 0.0;
     vector weightedSum(0, 0, 0);
     int totalObjects = 0;
@@ -183,6 +208,8 @@ void node::AddExisting(int id){
     
 }
 
+// function generates ID and new body
+// handles adding to array
 int node::SetID(double m, vector r, vector v){
     if(id == -1){
         int tmp = memberCount;
@@ -193,6 +220,7 @@ int node::SetID(double m, vector r, vector v){
     return id;
 }
 
+// handles inserting the child into the octree
 void node::InsertChild(double m, vector r, vector v, int id){
     double x = this->center.x;
     double y = this->center.y;
@@ -215,6 +243,7 @@ void node::InsertChild(double m, vector r, vector v, int id){
             cx = x + offset;
             cy = y + offset;
             cz = z + offset;
+            // if ID == -1 then a new body is generated and assigned to the child
             if(id == -1){
                 id = SetID(m, r, v);
             }
@@ -315,6 +344,8 @@ void node::InsertChild(double m, vector r, vector v, int id){
     }
 }
 
+// same as inserting child but this function will always receive
+// a valid id. So omit all the id handling
 void node::InsertExisting(double m, vector r, vector v, int id){
     double x = this->center.x;
     double y = this->center.y;
@@ -414,28 +445,37 @@ void node::InsertExisting(double m, vector r, vector v, int id){
 }
 
 // misleading as I compute the acceleration only but it saves me some time
-// there is one optimization i will implement later? 
+// there is one optimization i want to implement later? 
 void node::computeForce(const node* n, const vector& com, const double theta, vector& alpha){ 
-    if(!n) {return;} // since Ill be doing this recursively, it will stop
-    if(n->id == this->id){return;}
-    // when it reaches a leaf node 
+    if(!n) {return;} // since Ill be doing this recursively, it will stop once it hits a nullptr
 
-    double s = n->width; // in the Barnes Hut method the approximation is controlled by s/d
-    // the
+    if(n->id == this->id){return;} // prevents doing math on itself
 
-    vector r = n->com - com; // compute the displacment between the two nodes center of mass
+    double s = n->width; // in the Barnes Hut method the approximation accuracy is controlled by s/d
+
+    vector r = n->com - com; // compute the displacement between the two nodes center of mass
+
     double d = this->magnitude(r);
 
     if(n->objects == 1){ // if its one then it means we are at a leaf node
         // in that case we can just direct force and return
-        if(d == 0) {return;} // if d is 0 then it means we are at the body we are comparing so skip
+        // if d is 0 then it means we are at the body we are comparing so skip
+        Body* tmp = leafNodes[this->id];
+        if(d == 0) {
+            return;
+        } 
+        else if (d < 0.01){
+            vector new_v = r*(tmp->velocity * r / (d*d));
+            //double energy = (0.5)*(tmp->mass)*(new_v*cor);
+
+        }
         alpha += ((G*(n->mass)) / (d*d*d))*r;
         return; 
     }
 
     // now this is the logic of the actual implementation of the Barnes Hut method
     // if the angle is small enough then we can treat it as one object
-    // how high theta is determines the accuracy of the simualtion
+    // how high theta is determines the accuracy of the simulation
     // if its 0, then it will compute it as sum all
     if(d == 0) {return;}
     if(s/d < theta){
@@ -460,33 +500,42 @@ double node::magnitude(vector tmp){
     return sqrt(tmp.x*tmp.x + tmp.y*tmp.y + tmp.z*tmp.z);
 }
 
+// handles leap frog position half step
 void node::PositionHalfStep(){
     leafNodes[id]->position += leafNodes[id]->velocity*dt/2;
 }
 
+// handles velocity leap frog step
 void node::VelocityHalfStep(){
     
     leafNodes[id]->velocity += leafNodes[id]->alpha*dt;
 }
 
+// prints out object to the anim helper program
 void node::printCoords(){
-    // printf("%lf, %lf, %lf\n", pos.x, pos.y, pos.z);
-    // printf("Planet Count:%d PlanetID: %d\n", planetCount, planetID);
     vector p = leafNodes[this->id]->position;
     printf("c3 %.17lf %.17lf %.17lf %17lf\n", p.x, p.y, p.z, 0.1);
 }
 
+// prints out a trail between each object
+// go for orbit simulator but begins to become a problem with bigger
+// systems
 void node::trail(){
     vector p = leafNodes[this->id]->position;
     printf("ct3 %d %17lf %17lf %17lf %17lf\n", this->id, p.x, p.y, p.z, 0.001);
 }
 
-
+// handles the traversal of the octree and can perform a few operations
+// the operations have been defined in the node header
+// under enum opp_
+// it will keep going until it reaches a leaf node
+// designed to hit every single leaf node
+// big O(n)
 void node::traversal(node* root, int opp){
     // start at root so first iteration root=curr
     // must be a leaf and implicitly also have 1 object
     if((state == leaf) && (objects == 1)){
-        // when it is a leaf then we simply compute the force
+        
         switch (opp)
         {
         case forceV:
@@ -552,23 +601,25 @@ void node::animate(node* root){
     root->traversal(root, anim);
 }
 
+// function rebuilds the tree after each time step
 void node::rebuild(node*& root){
     if(!root){return;} // if root pointer is a null pointer stop
 
+    // generates a new root same space width as the original
     double width = root->width;
     vector center = root->center;
 
     node* newRoot = new node(width);
     newRoot->SetCenter(center);
 
+    // we add each leaf node to the tree
     for (int i = 0; i < memberCount; i++){
         if(leafNodes[i]){
             newRoot->AddExisting(i);
         }
     }
 
+    // we delete the old tree
     delete root;
     root = newRoot;
 }
-
-

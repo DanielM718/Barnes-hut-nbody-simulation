@@ -77,8 +77,8 @@ void node::SetEight(node* eight){this->eight = eight;}
 const double node::G = 4*(M_PI*M_PI);
 const double node::dt = 0.0005;
 const double node::theta = 0.5;
-const double node::eps = 1;
-const double node::cor = 0.32; // Coefficient of restitution
+const double node::eps = 0.01;
+const double node::cor = 0.0; // Coefficient of restitution
 
 // holds pointers to the bodies in the simulation
 // arbitrary array cap will work on dynamic array
@@ -465,11 +465,79 @@ void node::computeForce(const node* n, const vector& com, const double theta, ve
             return;
         } 
         else if (d < 0.01){
-            vector new_v = r*(tmp->velocity * r / (d*d));
-            //double energy = (0.5)*(tmp->mass)*(new_v*cor);
+            // store the bodies of both colliding nodes
+            Body* a = leafNodes[this->id];
+            Body* b = leafNodes[n->id];
 
+            // since they each have a unique ID one will be larger than the other
+            // since ill be doing math on both objects in this block of code
+            // i want to prevent the computation from occuring twice.
+            if(this->id < n->id){
+                // compute the normal vector
+                vector norm = r / d;
+
+                
+
+                // masses of both nodes
+                double ma = a->mass;
+                double mb = b->mass;
+
+                // now im taking the tangential components
+                double va_n = a->velocity * norm;
+                double vb_n = b->velocity * norm;
+
+                // the relative normal velocity
+                double rel_n = (b->velocity - a->velocity) * norm;
+
+                double v_stick = 0.001;
+                if(rel_n < -v_stick){
+                    vector va_t = a->velocity - va_n * norm;
+                    vector vb_t = b->velocity - vb_n * norm;
+
+
+                    // following the wikipedia formula
+                    double denom = ma + mb;
+
+                    double va_n_new = ((ma*va_n ) + (mb*vb_n) + mb*cor*(vb_n - va_n))/ denom;
+                    double vb_n_new = ((ma*va_n ) + (mb*vb_n) + mb*cor*(va_n - vb_n))/ denom;
+
+                    a->velocity = va_t + va_n_new * norm;
+                    b->velocity = vb_t + vb_n_new * norm;
+
+                    double target = 0.01; // this is the collison distanc
+
+                    if(d < target){
+                        vector mid = 0.5 * (a->position + b->position);
+                        double half = 0.5 * target;
+                        a->position = mid - half * norm;
+                        b->position = mid + half * norm;
+                    }
+                    
+                }
+                else if(fabs(rel_n) <= v_stick){
+                    vector va_t = a->velocity - va_n * norm;
+                    vector vb_t = b->velocity - vb_n * norm;
+
+                    double v_cm_n = (ma*va_n + mb*vb_n) / (ma + mb);
+
+                    a->velocity = va_t + v_cm_n * norm;
+                    b->velocity = vb_t + v_cm_n * norm;
+
+                    double target = 0.01;
+                    vector mid = 0.5 * (a->position + b->position);
+                    double half = 0.5 * target;
+                    a->position = mid - half * norm;
+                    b->position = mid + half * norm;
+                }
+            }
+            // alpha = GMr/(r^2 + esp^2)^(3/2)
+            
+            return;
         }
-        alpha += ((G*(n->mass)) / (d*d*d))*r;
+        else{
+            alpha += ((G*(n->mass)) / pow(d*d + eps*eps, 1.5))*r;
+            return;
+        }
         return; 
     }
 
@@ -479,7 +547,8 @@ void node::computeForce(const node* n, const vector& com, const double theta, ve
     // if its 0, then it will compute it as sum all
     if(d == 0) {return;}
     if(s/d < theta){
-        alpha += ((G*(n->mass)) / (d*d*d))*r;
+        // alpha += ((G*(n->mass)) / (d*d*d))*r;
+        alpha += ((G*(n->mass)) / pow(d*d + eps*eps, 1.5))*r;
         return;
     }
     else{
@@ -514,7 +583,7 @@ void node::VelocityHalfStep(){
 // prints out object to the anim helper program
 void node::printCoords(){
     vector p = leafNodes[this->id]->position;
-    printf("c3 %.17lf %.17lf %.17lf %17lf\n", p.x, p.y, p.z, 0.1);
+    printf("c3 %.17lf %.17lf %.17lf %17lf\n", p.x, p.y, p.z, 0.01);
 }
 
 // prints out a trail between each object
@@ -548,7 +617,7 @@ void node::traversal(node* root, int opp){
             break;
         case anim:
             printCoords();
-            trail();
+            //trail();
             break;
         default:
             printf("bad opp");
